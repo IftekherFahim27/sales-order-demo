@@ -485,7 +485,7 @@ function renderDashboard() {
             ${stockRisks.map((product) => `
               <div>
                 <strong>${escapeHtml(product.name)}</strong>
-                <span>${escapeHtml(product.sku)} · ${product.stockQuantity} in stock</span>
+                <span>${escapeHtml(product.sku)} - ${product.stockQuantity} in stock</span>
               </div>
             `).join("") || `<div><strong>Healthy inventory</strong><span>No products are below the stock threshold.</span></div>`}
           </div>
@@ -943,7 +943,7 @@ function openOrderDetails(id) {
       <section class="detail-panel">
         <p class="eyebrow">Receivable</p>
         <h3>${money(outstanding)}</h3>
-        <p>${escapeHtml(paymentStatus)} · Total ${money(order.grandTotal)}</p>
+        <p>${escapeHtml(paymentStatus)} - Total ${money(order.grandTotal)}</p>
       </section>
     </div>
     <div class="summary-grid" style="margin-top:14px">
