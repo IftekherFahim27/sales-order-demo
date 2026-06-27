@@ -2,6 +2,17 @@
 
 This is a dependency-free sales order management app for a one-day development workshop.
 
+## Tech Stack
+
+- Framework: No frontend framework; built with vanilla HTML, CSS, and JavaScript
+- UI: Custom responsive CSS with light and dark mode
+- Charts: CSS-based dashboard charts, no chart library
+- State management: Browser local storage
+- Backend: None; static frontend app
+- Database: Browser local storage demo data
+- Deployment: Render Static Site
+- Version control: Git and GitHub
+
 ## How To Run
 
 Open `index.html` in a browser.
