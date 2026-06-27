@@ -5,7 +5,15 @@ const USERS = [
 
 const STORAGE_KEY = "sales-order-workshop-state-v1";
 const SESSION_KEY = "sales-order-workshop-user-v1";
+const THEME_KEY = "sales-order-workshop-theme-v1";
 const STATUSES = ["Draft", "Pending", "Approved", "Delivered", "Cancelled"];
+const STATUS_COLORS = {
+  Draft: "#94a3b8",
+  Pending: "#f59e0b",
+  Approved: "#2563eb",
+  Delivered: "#16a34a",
+  Cancelled: "#ef4444",
+};
 
 const seedState = {
   customers: [
@@ -40,6 +48,8 @@ let state = loadState();
 let currentUser = loadSession();
 let currentPage = "dashboard";
 let modal = null;
+let currentTheme = localStorage.getItem(THEME_KEY) || "light";
+applyTheme();
 
 function makeOrder(orderNumber, customerId, status, orderDate, rawItems, notes) {
   const items = rawItems.map((raw) => {
@@ -87,6 +97,17 @@ function loadSession() {
 function saveSession(user) {
   currentUser = user;
   localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+}
+
+function applyTheme() {
+  document.documentElement.dataset.theme = currentTheme;
+}
+
+function toggleTheme() {
+  currentTheme = currentTheme === "dark" ? "light" : "dark";
+  localStorage.setItem(THEME_KEY, currentTheme);
+  applyTheme();
+  render();
 }
 
 function money(value) {
@@ -159,10 +180,12 @@ function render() {
   };
 
   document.title = `${pages[currentPage] || "Sales Orders"} - Sales Order Management`;
+  applyTheme();
   byId("app").innerHTML = `
     <div class="app-shell">
       <aside class="sidebar">
         <div class="brand">
+          <span class="brand-mark">SF</span>
           <strong>SalesFlow</strong>
           <span>Order management workshop</span>
         </div>
@@ -173,15 +196,24 @@ function render() {
           ${navButton("orders", "Sales Orders")}
         </nav>
         <div class="user-card">
-          <strong>${escapeHtml(currentUser.name)}</strong>
-          <span>${escapeHtml(currentUser.role)}</span>
-          <button class="btn ghost" style="margin-top:12px;color:white;border-color:rgba(255,255,255,.25)" onclick="logout()">Logout</button>
+          <div class="avatar">${escapeHtml(currentUser.name.slice(0, 1))}</div>
+          <div>
+            <strong>${escapeHtml(currentUser.name)}</strong>
+            <span>${escapeHtml(currentUser.role)}</span>
+          </div>
+          <button class="btn sidebar-btn" onclick="logout()">Logout</button>
         </div>
       </aside>
       <main class="main">
         <header class="topbar">
-          <h1>${pages[currentPage] || "Dashboard"}</h1>
+          <div>
+            <p class="eyebrow">Sales order workspace</p>
+            <h1>${pages[currentPage] || "Dashboard"}</h1>
+          </div>
           <div class="actions">
+            <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+              <span>${currentTheme === "dark" ? "Light" : "Dark"}</span>
+            </button>
             <button class="btn" onclick="resetDemoData()">Reset Demo Data</button>
           </div>
         </header>
@@ -203,13 +235,18 @@ function go(page) {
 }
 
 function renderLogin() {
+  applyTheme();
   byId("app").innerHTML = `
     <div class="login-shell">
       <section class="login-hero">
+        <div class="login-badge">One-day workshop MVP</div>
         <h1>Sales Order Management</h1>
         <p>Create customers, manage products, build sales orders, and print invoices in one focused workshop app.</p>
       </section>
       <section class="login-panel">
+        <div class="login-actions">
+          <button class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">${currentTheme === "dark" ? "Light" : "Dark"}</button>
+        </div>
         <h2>Sign in</h2>
         <p class="hint">Use one of the workshop demo accounts to continue.</p>
         <form onsubmit="login(event)">
@@ -276,34 +313,119 @@ function renderNoAccess() {
 function renderDashboard() {
   const counts = Object.fromEntries(STATUSES.map((status) => [status, state.orders.filter((order) => order.status === status).length]));
   const revenue = state.orders.filter((order) => ["Approved", "Delivered"].includes(order.status)).reduce((sum, order) => sum + order.grandTotal, 0);
+  const openRevenue = state.orders.filter((order) => ["Draft", "Pending", "Approved"].includes(order.status)).reduce((sum, order) => sum + order.grandTotal, 0);
+  const avgOrder = state.orders.length ? state.orders.reduce((sum, order) => sum + order.grandTotal, 0) / state.orders.length : 0;
   const recent = [...state.orders].sort((a, b) => b.orderDate.localeCompare(a.orderDate)).slice(0, 5);
   const maxCount = Math.max(1, ...Object.values(counts));
+  const statusTotal = Math.max(1, state.orders.length);
+  const statusGradient = buildStatusGradient(counts, statusTotal);
+  const monthly = revenueByMonth();
+  const category = revenueByCategory();
+  const maxMonthly = Math.max(1, ...monthly.map((item) => item.total));
+  const maxCategory = Math.max(1, ...category.map((item) => item.total));
 
   return `
+    <section class="dashboard-hero">
+      <div>
+        <p class="eyebrow">Live business snapshot</p>
+        <h2>Track orders, revenue, and fulfillment from one calm workspace.</h2>
+      </div>
+      <div class="hero-total">
+        <span>Qualified Revenue</span>
+        <strong>${money(revenue)}</strong>
+      </div>
+    </section>
     <div class="grid cols-4">
-      ${metricCard("Total Orders", state.orders.length)}
-      ${metricCard("Pending", counts.Pending)}
-      ${metricCard("Delivered", counts.Delivered)}
-      ${metricCard("Revenue", money(revenue))}
+      ${metricCard("Total Orders", state.orders.length, "All sales orders", "trend-up")}
+      ${metricCard("Open Pipeline", money(openRevenue), "Draft, pending, approved", "trend-warn")}
+      ${metricCard("Delivered", counts.Delivered, "Completed orders", "trend-good")}
+      ${metricCard("Avg Order", money(avgOrder), "Across all statuses", "trend-info")}
     </div>
-    <div class="grid cols-2" style="margin-top:16px">
-      <div class="card">
+    <div class="grid dashboard-grid" style="margin-top:18px">
+      <div class="card chart-card">
         <div class="card-body">
-          <h2 style="margin-top:0">Status Summary</h2>
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Order health</p>
+              <h2>Status Distribution</h2>
+            </div>
+          </div>
+          <div class="donut-layout">
+            <div class="donut" style="background:${statusGradient}">
+              <div class="donut-hole">
+                <strong>${state.orders.length}</strong>
+                <span>Orders</span>
+              </div>
+            </div>
+            <div class="status-legend">
+              ${STATUSES.map((status) => `
+                <div>
+                  <span class="legend-dot" style="background:${STATUS_COLORS[status]}"></span>
+                  <span>${status}</span>
+                  <strong>${counts[status]}</strong>
+                </div>
+              `).join("")}
+            </div>
+          </div>
           <div class="chart-bars">
             ${STATUSES.map((status) => `
               <div class="bar-line">
                 <span>${status}</span>
-                <div class="bar-track"><div class="bar-fill" style="width:${(counts[status] / maxCount) * 100}%"></div></div>
+                <div class="bar-track"><div class="bar-fill" style="width:${(counts[status] / maxCount) * 100}%;background:${STATUS_COLORS[status]}"></div></div>
                 <strong>${counts[status]}</strong>
               </div>
             `).join("")}
           </div>
         </div>
       </div>
-      <div class="card">
+      <div class="card chart-card">
         <div class="card-body">
-          <h2 style="margin-top:0">Recent Orders</h2>
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Revenue rhythm</p>
+              <h2>Monthly Sales</h2>
+            </div>
+          </div>
+          <div class="column-chart">
+            ${monthly.map((item) => `
+              <div class="column-item">
+                <div class="column-track"><div class="column-fill" style="height:${Math.max(8, (item.total / maxMonthly) * 100)}%"></div></div>
+                <span>${item.label}</span>
+                <strong>${money(item.total)}</strong>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <div class="card-body">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Catalog signal</p>
+              <h2>Revenue By Category</h2>
+            </div>
+          </div>
+          <div class="ranked-bars">
+            ${category.map((item) => `
+              <div class="ranked-row">
+                <div>
+                  <strong>${escapeHtml(item.label)}</strong>
+                  <span>${money(item.total)}</span>
+                </div>
+                <div class="bar-track"><div class="bar-fill category" style="width:${(item.total / maxCategory) * 100}%"></div></div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <div class="card-body">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Latest activity</p>
+              <h2>Recent Orders</h2>
+            </div>
+          </div>
           ${renderOrderTable(recent, false)}
         </div>
       </div>
@@ -311,8 +433,52 @@ function renderDashboard() {
   `;
 }
 
-function metricCard(label, value) {
-  return `<div class="card metric"><div class="card-body"><span>${label}</span><strong>${value}</strong></div></div>`;
+function metricCard(label, value, detail, tone) {
+  return `
+    <div class="card metric ${tone}">
+      <div class="card-body">
+        <div class="metric-icon"></div>
+        <span>${label}</span>
+        <strong>${value}</strong>
+        <small>${detail}</small>
+      </div>
+    </div>
+  `;
+}
+
+function buildStatusGradient(counts, total) {
+  let cursor = 0;
+  const stops = STATUSES.map((status) => {
+    const start = cursor;
+    const end = cursor + (counts[status] / total) * 100;
+    cursor = end;
+    return `${STATUS_COLORS[status]} ${start}% ${end}%`;
+  });
+  return `conic-gradient(${stops.join(", ")})`;
+}
+
+function revenueByMonth() {
+  const revenueOrders = state.orders.filter((order) => order.status !== "Cancelled");
+  const grouped = revenueOrders.reduce((map, order) => {
+    const label = new Date(`${order.orderDate}T00:00:00`).toLocaleDateString("en-US", { month: "short" });
+    map[label] = (map[label] || 0) + order.grandTotal;
+    return map;
+  }, {});
+  const labels = [...new Set(revenueOrders.map((order) => new Date(`${order.orderDate}T00:00:00`).toLocaleDateString("en-US", { month: "short" })))];
+  return (labels.length ? labels : ["Jun"]).map((label) => ({ label, total: grouped[label] || 0 }));
+}
+
+function revenueByCategory() {
+  const grouped = {};
+  state.orders.filter((order) => order.status !== "Cancelled").forEach((order) => {
+    order.items.forEach((item) => {
+      const product = state.products.find((entry) => entry.id === item.productId);
+      const category = product?.category || "Other";
+      grouped[category] = (grouped[category] || 0) + item.lineTotal;
+    });
+  });
+  const rows = Object.entries(grouped).map(([label, total]) => ({ label, total })).sort((a, b) => b.total - a.total);
+  return rows.length ? rows.slice(0, 5) : [{ label: "No sales", total: 0 }];
 }
 
 function renderCustomers() {
