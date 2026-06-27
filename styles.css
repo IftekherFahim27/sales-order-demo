@@ -441,6 +441,21 @@ th {
   color: var(--danger);
 }
 
+.badge.payment.Paid {
+  background: #ecfdf3;
+  color: var(--success);
+}
+
+.badge.payment.Partial {
+  background: #fffaeb;
+  color: var(--warning);
+}
+
+.badge.payment.Unpaid {
+  background: #f2f4f7;
+  color: var(--muted);
+}
+
 .brand .brand-mark {
   grid-column: 1;
   grid-row: 1 / span 2;
@@ -743,6 +758,138 @@ th {
   background: linear-gradient(90deg, var(--brand), var(--accent));
 }
 
+.bar-fill.payment-paid {
+  background: linear-gradient(90deg, #16a34a, #2dd4bf);
+}
+
+.bar-fill.payment-partial {
+  background: linear-gradient(90deg, #f59e0b, #f97316);
+}
+
+.bar-fill.payment-unpaid {
+  background: linear-gradient(90deg, #94a3b8, #64748b);
+}
+
+.stock-list {
+  display: grid;
+  gap: 12px;
+}
+
+.stock-list div {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  display: grid;
+  gap: 4px;
+}
+
+.stock-list strong,
+.stock-list span {
+  display: block;
+}
+
+.stock-list span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.detail-panel,
+.summary-grid div {
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.detail-panel h3 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+
+.detail-panel p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summary-grid span,
+.summary-grid strong {
+  display: block;
+}
+
+.summary-grid > div > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.summary-grid > div > strong {
+  margin-top: 8px;
+}
+
+.timeline {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.timeline div {
+  min-height: 74px;
+  padding: 12px;
+  border-radius: var(--radius);
+  border: 1px dashed var(--line);
+  background: var(--panel-soft);
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+
+.timeline div span {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.timeline div.done {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--brand) 40%, var(--line));
+  background: var(--brand-soft);
+}
+
+.timeline div.done span {
+  background: var(--brand);
+  box-shadow: 0 0 0 5px var(--brand-soft);
+}
+
+.timeline div.muted-step {
+  opacity: 0.55;
+}
+
+.timeline div.cancelled-step {
+  border-style: solid;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+}
+
+.timeline div.cancelled-step span {
+  background: var(--danger);
+}
+
 :root[data-theme="dark"] table,
 :root[data-theme="dark"] .field input,
 :root[data-theme="dark"] .field select,
@@ -769,6 +916,18 @@ th {
 
 :root[data-theme="dark"] .badge.Cancelled {
   background: rgba(239, 68, 68, 0.16);
+}
+
+:root[data-theme="dark"] .badge.payment.Paid {
+  background: rgba(22, 163, 74, 0.18);
+}
+
+:root[data-theme="dark"] .badge.payment.Partial {
+  background: rgba(245, 158, 11, 0.14);
+}
+
+:root[data-theme="dark"] .badge.payment.Unpaid {
+  background: rgba(148, 163, 184, 0.14);
 }
 
 .error {
@@ -927,6 +1086,12 @@ th {
 
   .dashboard-hero,
   .donut-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-grid,
+  .summary-grid,
+  .timeline {
     grid-template-columns: 1fr;
   }
 

@@ -7,6 +7,7 @@ const STORAGE_KEY = "sales-order-workshop-state-v1";
 const SESSION_KEY = "sales-order-workshop-user-v1";
 const THEME_KEY = "sales-order-workshop-theme-v1";
 const STATUSES = ["Draft", "Pending", "Approved", "Delivered", "Cancelled"];
+const PAYMENT_STATUSES = ["Unpaid", "Partial", "Paid"];
 const STATUS_COLORS = {
   Draft: "#94a3b8",
   Pending: "#f59e0b",
@@ -70,6 +71,7 @@ function makeOrder(orderNumber, customerId, status, orderDate, rawItems, notes) 
     customerId,
     orderDate,
     status,
+    paymentStatus: defaultPaymentStatus(status),
     items,
     notes,
     ...totals,
@@ -82,11 +84,28 @@ function loadState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(seedState));
     return structuredClone(seedState);
   }
-  return JSON.parse(saved);
+  return normalizeState(JSON.parse(saved));
 }
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function normalizeState(nextState) {
+  return {
+    customers: nextState.customers || [],
+    products: nextState.products || [],
+    orders: (nextState.orders || []).map((order) => ({
+      ...order,
+      paymentStatus: order.paymentStatus || defaultPaymentStatus(order.status),
+    })),
+  };
+}
+
+function defaultPaymentStatus(status) {
+  if (status === "Delivered") return "Paid";
+  if (status === "Approved") return "Partial";
+  return "Unpaid";
 }
 
 function loadSession() {
@@ -314,15 +333,19 @@ function renderDashboard() {
   const counts = Object.fromEntries(STATUSES.map((status) => [status, state.orders.filter((order) => order.status === status).length]));
   const revenue = state.orders.filter((order) => ["Approved", "Delivered"].includes(order.status)).reduce((sum, order) => sum + order.grandTotal, 0);
   const openRevenue = state.orders.filter((order) => ["Draft", "Pending", "Approved"].includes(order.status)).reduce((sum, order) => sum + order.grandTotal, 0);
-  const avgOrder = state.orders.length ? state.orders.reduce((sum, order) => sum + order.grandTotal, 0) / state.orders.length : 0;
+  const paidRevenue = state.orders.reduce((sum, order) => sum + paidAmount(order), 0);
+  const outstanding = state.orders.filter((order) => order.status !== "Cancelled").reduce((sum, order) => sum + Math.max(0, order.grandTotal - paidAmount(order)), 0);
   const recent = [...state.orders].sort((a, b) => b.orderDate.localeCompare(a.orderDate)).slice(0, 5);
   const maxCount = Math.max(1, ...Object.values(counts));
   const statusTotal = Math.max(1, state.orders.length);
   const statusGradient = buildStatusGradient(counts, statusTotal);
   const monthly = revenueByMonth();
   const category = revenueByCategory();
+  const payments = paymentSummary();
+  const stockRisks = stockRiskProducts();
   const maxMonthly = Math.max(1, ...monthly.map((item) => item.total));
   const maxCategory = Math.max(1, ...category.map((item) => item.total));
+  const maxPayment = Math.max(1, ...payments.map((item) => item.total));
 
   return `
     <section class="dashboard-hero">
@@ -338,8 +361,8 @@ function renderDashboard() {
     <div class="grid cols-4">
       ${metricCard("Total Orders", state.orders.length, "All sales orders", "trend-up")}
       ${metricCard("Open Pipeline", money(openRevenue), "Draft, pending, approved", "trend-warn")}
-      ${metricCard("Delivered", counts.Delivered, "Completed orders", "trend-good")}
-      ${metricCard("Avg Order", money(avgOrder), "Across all statuses", "trend-info")}
+      ${metricCard("Collected", money(paidRevenue), "Paid and partial payments", "trend-good")}
+      ${metricCard("Outstanding", money(outstanding), "Receivables to follow up", "trend-info")}
     </div>
     <div class="grid dashboard-grid" style="margin-top:18px">
       <div class="card chart-card">
@@ -429,6 +452,45 @@ function renderDashboard() {
           ${renderOrderTable(recent, false)}
         </div>
       </div>
+      <div class="card chart-card">
+        <div class="card-body">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Cash collection</p>
+              <h2>Payment Status</h2>
+            </div>
+          </div>
+          <div class="ranked-bars">
+            ${payments.map((item) => `
+              <div class="ranked-row">
+                <div>
+                  <strong>${item.label}</strong>
+                  <span>${money(item.total)}</span>
+                </div>
+                <div class="bar-track"><div class="bar-fill payment-${item.label.toLowerCase()}" style="width:${(item.total / maxPayment) * 100}%"></div></div>
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <div class="card-body">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Inventory watch</p>
+              <h2>Stock Risk</h2>
+            </div>
+          </div>
+          <div class="stock-list">
+            ${stockRisks.map((product) => `
+              <div>
+                <strong>${escapeHtml(product.name)}</strong>
+                <span>${escapeHtml(product.sku)} · ${product.stockQuantity} in stock</span>
+              </div>
+            `).join("") || `<div><strong>Healthy inventory</strong><span>No products are below the stock threshold.</span></div>`}
+          </div>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -479,6 +541,28 @@ function revenueByCategory() {
   });
   const rows = Object.entries(grouped).map(([label, total]) => ({ label, total })).sort((a, b) => b.total - a.total);
   return rows.length ? rows.slice(0, 5) : [{ label: "No sales", total: 0 }];
+}
+
+function paidAmount(order) {
+  if (order.paymentStatus === "Paid") return order.grandTotal;
+  if (order.paymentStatus === "Partial") return order.grandTotal * 0.5;
+  return 0;
+}
+
+function paymentSummary() {
+  return PAYMENT_STATUSES.map((label) => ({
+    label,
+    total: state.orders
+      .filter((order) => order.status !== "Cancelled" && (order.paymentStatus || defaultPaymentStatus(order.status)) === label)
+      .reduce((sum, order) => sum + order.grandTotal, 0),
+  }));
+}
+
+function stockRiskProducts() {
+  return state.products
+    .filter((product) => product.stockQuantity <= 15)
+    .sort((a, b) => a.stockQuantity - b.stockQuantity)
+    .slice(0, 5);
 }
 
 function renderCustomers() {
@@ -585,19 +669,22 @@ function renderOrderTable(rows, showActions) {
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Order</th><th>Date</th><th>Customer</th><th>Status</th><th>Total</th>${showActions ? "<th>Actions</th>" : ""}</tr></thead>
+        <thead><tr><th>Order</th><th>Date</th><th>Customer</th><th>Status</th><th>Payment</th><th>Total</th>${showActions ? "<th>Actions</th>" : ""}</tr></thead>
         <tbody>
           ${rows.map((order) => {
             const customer = state.customers.find((item) => item.id === order.customerId);
+            const paymentStatus = order.paymentStatus || defaultPaymentStatus(order.status);
             return `
               <tr>
                 <td><strong>${escapeHtml(order.orderNumber)}</strong></td>
                 <td>${escapeHtml(order.orderDate)}</td>
                 <td>${escapeHtml(customer?.companyName || "Unknown")}<br><span style="color:var(--muted)">${escapeHtml(customer?.name || "")}</span></td>
                 <td><span class="badge ${order.status}">${order.status}</span></td>
+                <td><span class="badge payment ${paymentStatus}">${paymentStatus}</span></td>
                 <td>${money(order.grandTotal)}</td>
                 ${showActions ? `
                   <td class="actions">
+                    <button class="btn small" onclick="openOrderDetails('${order.id}')">View</button>
                     <button class="btn small" onclick="openInvoice('${order.id}')">Invoice</button>
                     <button class="btn small" onclick="openOrderForm('${order.id}')">Edit</button>
                   </td>
@@ -733,6 +820,10 @@ function orderFormHtml(order, id) {
           <label>Status</label>
           <select name="status">${STATUSES.map((status) => `<option ${order.status === status ? "selected" : ""}>${status}</option>`).join("")}</select>
         </div>
+        <div class="field">
+          <label>Payment Status</label>
+          <select name="paymentStatus">${PAYMENT_STATUSES.map((status) => `<option ${((order.paymentStatus || defaultPaymentStatus(order.status)) === status) ? "selected" : ""}>${status}</option>`).join("")}</select>
+        </div>
         ${inputField("orderDate", "Order Date", order.orderDate, true, "date")}
       </div>
       <h3>Order Items</h3>
@@ -826,6 +917,7 @@ function saveOrder(event, id) {
     customerId: form.get("customerId"),
     orderDate: form.get("orderDate"),
     status: form.get("status"),
+    paymentStatus: form.get("paymentStatus"),
     items,
     notes: form.get("notes").trim(),
     ...totals,
@@ -834,6 +926,98 @@ function saveOrder(event, id) {
   saveState();
   currentPage = "orders";
   closeModal();
+}
+
+function openOrderDetails(id) {
+  const order = state.orders.find((item) => item.id === id);
+  const customer = state.customers.find((item) => item.id === order.customerId);
+  const paymentStatus = order.paymentStatus || defaultPaymentStatus(order.status);
+  const outstanding = Math.max(0, order.grandTotal - paidAmount(order));
+  modal = modalShell(`Order ${order.orderNumber}`, `
+    <div class="detail-grid">
+      <section class="detail-panel">
+        <p class="eyebrow">Customer</p>
+        <h3>${escapeHtml(customer?.companyName || "Unknown customer")}</h3>
+        <p>${escapeHtml(customer?.name || "")}<br>${escapeHtml(customer?.phone || "")}<br>${escapeHtml(customer?.email || "")}</p>
+      </section>
+      <section class="detail-panel">
+        <p class="eyebrow">Receivable</p>
+        <h3>${money(outstanding)}</h3>
+        <p>${escapeHtml(paymentStatus)} · Total ${money(order.grandTotal)}</p>
+      </section>
+    </div>
+    <div class="summary-grid" style="margin-top:14px">
+      <div><span>Status</span><strong><span class="badge ${order.status}">${order.status}</span></strong></div>
+      <div><span>Payment</span><strong><span class="badge payment ${paymentStatus}">${paymentStatus}</span></strong></div>
+      <div><span>Order Date</span><strong>${escapeHtml(order.orderDate)}</strong></div>
+      <div><span>Items</span><strong>${order.items.length}</strong></div>
+    </div>
+    <div class="card" style="margin-top:14px;box-shadow:none">
+      <div class="card-body">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Fulfillment</p>
+            <h2>Lifecycle Timeline</h2>
+          </div>
+        </div>
+        ${renderTimeline(order.status)}
+      </div>
+    </div>
+    <div class="grid cols-2" style="margin-top:14px">
+      <div class="field">
+        <label>Update Status</label>
+        <select id="detail-status">${STATUSES.map((status) => `<option ${order.status === status ? "selected" : ""}>${status}</option>`).join("")}</select>
+      </div>
+      <div class="field">
+        <label>Update Payment</label>
+        <select id="detail-payment">${PAYMENT_STATUSES.map((status) => `<option ${paymentStatus === status ? "selected" : ""}>${status}</option>`).join("")}</select>
+      </div>
+    </div>
+    <div class="table-wrap card" style="box-shadow:none;margin-top:14px">
+      <table>
+        <thead><tr><th>Item</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr></thead>
+        <tbody>
+          ${order.items.map((item) => `
+            <tr>
+              <td>${escapeHtml(item.productName)}</td>
+              <td>${item.quantity}</td>
+              <td>${money(item.unitPrice)}</td>
+              <td>${money(item.lineTotal)}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="actions" style="margin-top:16px">
+      <button class="btn primary" onclick="updateOrderMeta('${order.id}')">Save Updates</button>
+      <button class="btn" onclick="openInvoice('${order.id}')">Invoice</button>
+      <button class="btn" onclick="openOrderForm('${order.id}')">Edit Order</button>
+    </div>
+  `);
+  render();
+}
+
+function renderTimeline(status) {
+  const activeIndex = STATUSES.indexOf(status);
+  return `
+    <div class="timeline">
+      ${STATUSES.filter((item) => item !== "Cancelled").map((item, index) => `
+        <div class="${status === "Cancelled" ? "muted-step" : index <= activeIndex ? "done" : ""}">
+          <span></span>
+          <strong>${item}</strong>
+        </div>
+      `).join("")}
+      ${status === "Cancelled" ? `<div class="cancelled-step"><span></span><strong>Cancelled</strong></div>` : ""}
+    </div>
+  `;
+}
+
+function updateOrderMeta(id) {
+  const status = byId("detail-status").value;
+  const paymentStatus = byId("detail-payment").value;
+  state.orders = state.orders.map((order) => order.id === id ? { ...order, status, paymentStatus } : order);
+  saveState();
+  openOrderDetails(id);
 }
 
 function nextOrderNumber() {

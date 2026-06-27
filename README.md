@@ -25,6 +25,14 @@ Open `index.html` in a browser.
 - Epic 8: Sample data
 - Epic 9: Business UI foundation
 
+## Modern Sales Order Features
+
+- Light and dark mode
+- Dashboard charts for order status, monthly sales, category revenue, payment status, and stock risk
+- Payment status tracking: Unpaid, Partial, Paid
+- Order detail view with customer summary, receivable amount, item summary, and lifecycle timeline
+- Quick status and payment updates from the order detail view
+
 ## Workshop Notes
 
 The app uses browser local storage for persistence. Use the `Reset Demo Data` button to restore sample customers, products, and orders.
